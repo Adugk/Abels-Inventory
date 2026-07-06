@@ -44,14 +44,14 @@ function render() {
   root.innerHTML = `
     ${renderSidebar()}
     ${renderBottomNav()}
-    <main id="main-content">
+    <main id="main-content" tabindex="-1">
       <div class="page-enter" id="page-container">
         ${renderPage()}
       </div>
     </main>
-    <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-box" class="modal-box"></div></div>
-    <div id="toast" class="toast hidden"></div>
-    <div id="sync-badge" class="sync-badge">${t('online')}</div>
+    <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true"><div id="modal-box" class="modal-box"></div></div>
+    <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="sync-badge" class="sync-badge" aria-live="polite" aria-atomic="true">${t('online')}</div>
   `;
 
   attachNavHandlers();
@@ -84,7 +84,6 @@ function renderSetup() {
         <h2 class="auth-title">Connect to Supabase</h2>
         <p style="color:var(--text2); font-size:13px; margin-bottom:20px;">
           Enter your Supabase project credentials to get started.
-          <a href="https://supabase.com" target="_blank" style="color:var(--accent);">Create a free project →</a>
         </p>
         <div class="form-group">
           <label>Supabase Project URL</label>
@@ -95,11 +94,6 @@ function renderSetup() {
           <input type="text" id="setup-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" />
         </div>
         <button class="btn btn-primary" style="width:100%; margin-bottom:16px;" onclick="saveSupabaseConfig()">Connect</button>
-        <details style="font-size:12px; color:var(--text3);">
-          <summary style="cursor:pointer; color:var(--text2); margin-bottom:8px;">Database setup SQL (run in Supabase SQL Editor)</summary>
-          <pre id="sql-block" style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:12px; overflow-x:auto; white-space:pre-wrap; font-size:11px; line-height:1.5;">${window.SUPABASE_SQL}</pre>
-          <button class="btn btn-sm" style="margin-top:8px;" onclick="copySql()">Copy SQL</button>
-        </details>
         <div style="margin-top:16px; text-align:center;">
           <button class="btn btn-sm" onclick="setLang(currentLang === 'en' ? 'am' : 'en')">
             ${currentLang === 'en' ? 'አማርኛ' : 'English'}
@@ -120,10 +114,6 @@ function saveSupabaseConfig() {
   render();
 }
 
-function copySql() {
-  navigator.clipboard?.writeText(window.SUPABASE_SQL);
-  showToast('SQL copied!');
-}
 
 // ===== AUTH =====
 let authMode = 'signin';
@@ -213,7 +203,7 @@ function renderSidebar() {
     { page: 'settings', icon: settingsIcon(), label: t('settings') },
   ];
   return `
-    <nav id="sidebar">
+    <nav id="sidebar" aria-label="Main navigation">
       <div class="logo">
         <div class="logo-icon-sm">A</div>
         <div style="line-height:1.2;">
@@ -251,7 +241,7 @@ function renderSidebar() {
 
       <div class="sidebar-bottom">
         <button class="btn btn-sm" style="width:100%; margin-top:10px; background:rgba(248,113,113,0.12); border-color:rgba(248,113,113,0.25); color:var(--red);" onclick="doSignOut()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           ${t('signOut')}
         </button>
       </div>
@@ -269,7 +259,7 @@ function renderBottomNav() {
     { page: 'settings',    icon: settingsIcon(), label: t('settings') },
   ];
   return `
-    <nav id="bottom-nav">
+    <nav id="bottom-nav" aria-label="Mobile navigation">
       ${links.map(l => `
         <a href="#" class="bottom-link ${STATE.page === l.page ? 'active' : ''}" data-page="${l.page}">
           ${l.icon} <span>${l.label}</span>
@@ -355,10 +345,48 @@ function getStats() {
 function showToast(msg, type = 'success') {
   const el = $('toast');
   if (!el) return;
+  el.innerHTML = '';
   el.textContent = msg;
   el.className = `toast ${type}`;
   clearTimeout(el._timer);
   el._timer = setTimeout(() => { if(el) el.className = 'toast hidden'; }, 2500);
+}
+
+function showUndoToast(msg, onUndo) {
+  const el = $('toast');
+  if (!el) return;
+  clearTimeout(el._timer);
+  el.className = 'toast success';
+  el.innerHTML = `<span>${msg}</span> <button id="toast-undo-btn" style="margin-left:10px;background:none;border:none;color:var(--accent2);font-weight:700;cursor:pointer;text-decoration:underline;font-size:13px;">Undo</button>`;
+  const btn = $('toast-undo-btn');
+  if (btn) btn.onclick = () => { clearTimeout(el._timer); el.className = 'toast hidden'; onUndo(); };
+  el._timer = setTimeout(() => { if(el) el.className = 'toast hidden'; }, 5000);
+}
+
+// Wraps an async submit handler so its triggering button disables and shows
+// a loading label for the duration of the call, then restores itself.
+// Prevents double-submits on slow connections (P2 fix from /impeccable critique).
+async function withLoading(buttonEl, loadingLabel, asyncFn) {
+  if (!buttonEl) { await asyncFn(); return; }
+  if (buttonEl.dataset.loading === '1') return; // already in flight — ignore extra clicks
+  buttonEl.dataset.loading = '1';
+  const originalLabel = buttonEl.innerHTML;
+  const originalDisabled = buttonEl.disabled;
+  buttonEl.disabled = true;
+  buttonEl.style.opacity = '0.7';
+  buttonEl.style.cursor = 'wait';
+  buttonEl.innerHTML = loadingLabel;
+  try {
+    await asyncFn();
+  } finally {
+    delete buttonEl.dataset.loading;
+    if (buttonEl.isConnected) {
+      buttonEl.disabled = originalDisabled;
+      buttonEl.style.opacity = '';
+      buttonEl.style.cursor = '';
+      buttonEl.innerHTML = originalLabel;
+    }
+  }
 }
 
 // ===== MODAL =====
@@ -408,7 +436,7 @@ function renderDashboard() {
       </div>
     </div>
 
-    ${lowProds.length ? `<div class="alert alert-warning">⚠ ${lowProds.length} ${t('lowStockAlert')}: ${lowProds.map(p=>p.name).join(', ')}</div>` : ''}
+    ${lowProds.length ? `<div class="alert alert-warning" role="alert">⚠ ${lowProds.length} ${t('lowStockAlert')}: ${lowProds.map(p=>p.name).join(', ')}</div>` : ''}
 
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-label">${t('totalRevenue')}</div><div class="stat-value accent">${fmtSmall(s.totalRevenue)}</div><div class="stat-sub">${activeSales.length} ${t('salesTotal')}</div></div>
@@ -457,7 +485,7 @@ function renderProducts() {
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <div class="search-bar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="${t('searchProducts')}" value="${STATE.productSearch}" oninput="STATE.productSearch=this.value; refreshPage()" />
+          <input type="text" placeholder="${t('searchProducts')}" value="${STATE.productSearch}" oninput="STATE.productSearch=this.value; refreshPage()" aria-label="${t('searchProducts')}" />
         </div>
         <button class="btn btn-primary" onclick="openAddProduct()">+ ${t('addProduct')}</button>
       </div>
@@ -513,16 +541,16 @@ function productFormHTML(p = {}) {
 }
 
 function openAddProduct() {
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('addProduct')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>${productFormHTML()}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitProduct()">+ ${t('addProduct')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('addProduct')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>${productFormHTML()}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitProduct(null, this)">+ ${t('addProduct')}</button></div>`);
 }
 
 function openEditProduct(id) {
   const p = getProduct(id);
   if (!p) return;
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('editProduct')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>${productFormHTML(p)}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitProduct('${id}')">${t('saveChanges')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('editProduct')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>${productFormHTML(p)}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitProduct('${id}', this)">${t('saveChanges')}</button></div>`);
 }
 
-async function submitProduct(id) {
+async function submitProduct(id, btn) {
   const name     = $('f-name')?.value.trim();
   const category = $('f-cat')?.value.trim();
   const cost     = parseFloat($('f-cost')?.value);
@@ -530,25 +558,27 @@ async function submitProduct(id) {
   const qty      = parseInt($('f-qty')?.value);
   if (!name || !category || isNaN(cost) || isNaN(price) || isNaN(qty)) { showToast(t('fillAllFields'), 'error'); return; }
   if (price < cost) { showToast(t('priceError'), 'error'); return; }
-  try {
-    if (id) {
-      const updated = await DB.updateProduct(id, { name, category, cost, price, qty });
-      STATE.products = STATE.products.map(p => p.id === id ? updated : p);
-      showToast(t('productUpdated'));
-    } else {
-      const product_number = await DB.getNextProductNumber();
-      const added = await DB.addProduct({ name, category, cost, price, qty, product_number });
-      STATE.products.push(added);
-      showToast(t('productAdded'));
-    }
-    closeModal(); navigate('products');
-  } catch(e) { showToast(e.message, 'error'); }
+  await withLoading(btn, t('loading'), async () => {
+    try {
+      if (id) {
+        const updated = await DB.updateProduct(id, { name, category, cost, price, qty });
+        STATE.products = STATE.products.map(p => p.id === id ? updated : p);
+        showToast(t('productUpdated'));
+      } else {
+        const product_number = await DB.getNextProductNumber();
+        const added = await DB.addProduct({ name, category, cost, price, qty, product_number });
+        STATE.products.push(added);
+        showToast(t('productAdded'));
+      }
+      closeModal(); navigate('products');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
 }
 
 function confirmDeleteProduct(id) {
   const p = getProduct(id);
   if (!p) return;
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('removeProduct')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div><p style="color:var(--text2);margin-bottom:20px;">${t('removeProductConfirm')}</p><div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-danger" onclick="doDeleteProduct('${id}')">${t('remove')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('removeProduct')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div><div class="irreversible-warning">⚠ This cannot be undone.</div><p style="color:var(--text2);margin-bottom:20px;">${t('removeProductConfirm')}</p><div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-danger-confirm" onclick="doDeleteProduct('${id}')">${t('remove')}</button></div>`);
 }
 
 async function doDeleteProduct(id) {
@@ -596,7 +626,7 @@ function renderRecordSale() {
         </div>
         <div class="form-group"><label>${t('notes')}</label><input type="text" id="sale-notes" placeholder="${t('notesPlaceholder')}" /></div>
         <div id="sale-preview" style="display:none;" class="sale-preview"></div>
-        <div style="margin-top:20px;"><button class="btn btn-primary" style="width:100%;" onclick="submitSale()">${t('confirmSale')}</button></div>
+        <div style="margin-top:20px;"><button class="btn btn-primary" style="width:100%;" onclick="submitSale(this)">${t('confirmSale')}</button></div>
       </div>
     </div>
   `;
@@ -642,7 +672,7 @@ function updateSalePreview() {
   `;
 }
 
-async function submitSale() {
+async function submitSale(btn) {
   const product_id  = $('sale-product')?.value;
   const qty         = parseInt($('sale-qty')?.value) || 0;
   const employee_id = $('sale-emp')?.value;
@@ -665,21 +695,23 @@ async function submitSale() {
   const revenue = baseRevenue - discountAmt;
   const profit  = revenue - prod.cost * qty;
 
-  try {
-    const sale = await DB.addSale({
-      product_id, product_name: prod.name, product_number: prod.product_number,
-      employee_id, employee_name: emp ? emp.name : '',
-      qty, unit_price: prod.price,
-      discount_type: discType, discount_value: discountAmt,
-      revenue, profit, notes,
-      refunded: false, refund_amount: 0, refund_note: '',
-    });
-    STATE.sales.unshift(sale);
-    const updated = await DB.updateProduct(product_id, { qty: prod.qty - qty });
-    STATE.products = STATE.products.map(p => p.id === product_id ? updated : p);
-    showToast(`${t('saleRecorded')} — ${fmt(revenue)}`);
-    navigate('dashboard');
-  } catch(e) { showToast(e.message, 'error'); }
+  await withLoading(btn, t('syncing'), async () => {
+    try {
+      const sale = await DB.addSale({
+        product_id, product_name: prod.name, product_number: prod.product_number,
+        employee_id, employee_name: emp ? emp.name : '',
+        qty, unit_price: prod.price,
+        discount_type: discType, discount_value: discountAmt,
+        revenue, profit, notes,
+        refunded: false, refund_amount: 0, refund_note: '',
+      });
+      STATE.sales.unshift(sale);
+      const updated = await DB.updateProduct(product_id, { qty: prod.qty - qty });
+      STATE.products = STATE.products.map(p => p.id === product_id ? updated : p);
+      showToast(`${t('saleRecorded')} — ${fmt(revenue)}`);
+      navigate('dashboard');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
 }
 
 // ===== SALES HISTORY =====
@@ -748,24 +780,37 @@ function openRefundModal(id) {
   const sale = STATE.sales.find(s => s.id === id);
   if (!sale) return;
   openModal(`
-    <div class="modal-header"><h2 class="modal-title">${t('markRefunded')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h2 class="modal-title">${t('markRefunded')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>
     <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">Sale: <strong style="color:var(--text)">${sale.product_name}</strong> — ${fmt(sale.revenue)}</p>
     <div class="form-group"><label>${t('refundAmount')}</label><input type="number" id="refund-amt" value="${sale.revenue}" min="0" step="0.01" /></div>
     <div class="form-group"><label>${t('refundNote')}</label><input type="text" id="refund-note" placeholder="Reason for refund…" /></div>
     <div class="form-actions">
       <button class="btn" onclick="closeModal()">${t('cancel')}</button>
-      <button class="btn btn-danger" onclick="submitRefund('${id}')">${t('confirmRefund')}</button>
+      <button class="btn btn-danger" onclick="submitRefund('${id}', this)">${t('confirmRefund')}</button>
     </div>
   `);
 }
 
-async function submitRefund(id) {
+async function submitRefund(id, btn) {
   const refund_amount = parseFloat($('refund-amt')?.value) || 0;
   const refund_note   = $('refund-note')?.value.trim();
+  await withLoading(btn, t('loading'), async () => {
+    try {
+      const updated = await DB.updateSale(id, { refunded: true, refund_amount, refund_note });
+      STATE.sales = STATE.sales.map(s => s.id === id ? updated : s);
+      closeModal();
+      showUndoToast(t('refundRecorded'), () => undoRefund(id));
+      navigate('sales');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
+}
+
+async function undoRefund(id) {
   try {
-    const updated = await DB.updateSale(id, { refunded: true, refund_amount, refund_note });
+    const updated = await DB.updateSale(id, { refunded: false, refund_amount: 0, refund_note: '' });
     STATE.sales = STATE.sales.map(s => s.id === id ? updated : s);
-    closeModal(); showToast(t('refundRecorded')); navigate('sales');
+    showToast('Refund undone');
+    refreshPage();
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -773,28 +818,30 @@ function openEditSale(id) {
   const sale = STATE.sales.find(s => s.id === id);
   if (!sale) return;
   openModal(`
-    <div class="modal-header"><h2 class="modal-title">${t('editSale')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h2 class="modal-title">${t('editSale')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>
     <div class="form-group"><label>${t('notes')}</label><input type="text" id="edit-sale-notes" value="${sale.notes||''}" placeholder="${t('notesPlaceholder')}" /></div>
     <div class="form-group"><label>${t('revenue')} ($)</label><input type="number" id="edit-sale-revenue" value="${sale.revenue}" min="0" step="0.01" /></div>
     <div class="form-group"><label>${t('profit')} ($)</label><input type="number" id="edit-sale-profit" value="${sale.profit}" step="0.01" /></div>
     <div class="alert alert-info" style="font-size:12px;">Note: Editing revenue/profit manually does not update inventory stock.</div>
     <div class="form-actions">
       <button class="btn" onclick="closeModal()">${t('cancel')}</button>
-      <button class="btn btn-primary" onclick="submitEditSale('${id}')">${t('saveChanges')}</button>
+      <button class="btn btn-primary" onclick="submitEditSale('${id}', this)">${t('saveChanges')}</button>
     </div>
   `);
 }
 
-async function submitEditSale(id) {
+async function submitEditSale(id, btn) {
   const notes   = $('edit-sale-notes')?.value.trim();
   const revenue = parseFloat($('edit-sale-revenue')?.value);
   const profit  = parseFloat($('edit-sale-profit')?.value);
   if (isNaN(revenue) || isNaN(profit)) { showToast(t('fillAllFields'), 'error'); return; }
-  try {
-    const updated = await DB.updateSale(id, { notes, revenue, profit });
-    STATE.sales = STATE.sales.map(s => s.id === id ? updated : s);
-    closeModal(); showToast(t('saleUpdated')); navigate('sales');
-  } catch(e) { showToast(e.message, 'error'); }
+  await withLoading(btn, t('loading'), async () => {
+    try {
+      const updated = await DB.updateSale(id, { notes, revenue, profit });
+      STATE.sales = STATE.sales.map(s => s.id === id ? updated : s);
+      closeModal(); showToast(t('saleUpdated')); navigate('sales');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
 }
 
 // ===== EMPLOYEES =====
@@ -839,38 +886,40 @@ function employeeFormHTML(e = {}) {
 }
 
 function openAddEmployee() {
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('addEmployee')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>${employeeFormHTML()}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitEmployee()">+ ${t('addEmployee')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('addEmployee')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>${employeeFormHTML()}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitEmployee(null, this)">+ ${t('addEmployee')}</button></div>`);
 }
 
 function openEditEmployee(id) {
   const emp = getEmployee(id);
   if (!emp) return;
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('editEmployee')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>${employeeFormHTML(emp)}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitEmployee('${id}')">${t('saveChanges')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('editEmployee')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>${employeeFormHTML(emp)}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitEmployee('${id}', this)">${t('saveChanges')}</button></div>`);
 }
 
-async function submitEmployee(id) {
+async function submitEmployee(id, btn) {
   const name  = $('ef-name')?.value.trim();
   const role  = $('ef-role')?.value.trim();
   const phone = $('ef-phone')?.value.trim();
   if (!name || !role) { showToast(t('nameRoleRequired'), 'error'); return; }
-  try {
-    if (id) {
-      const updated = await DB.updateEmployee(id, { name, role, phone });
-      STATE.employees = STATE.employees.map(e => e.id === id ? updated : e);
-      showToast(t('employeeUpdated'));
-    } else {
-      const added = await DB.addEmployee({ name, role, phone });
-      STATE.employees.push(added);
-      showToast(t('employeeAdded'));
-    }
-    closeModal(); navigate('employees');
-  } catch(e) { showToast(e.message, 'error'); }
+  await withLoading(btn, t('loading'), async () => {
+    try {
+      if (id) {
+        const updated = await DB.updateEmployee(id, { name, role, phone });
+        STATE.employees = STATE.employees.map(e => e.id === id ? updated : e);
+        showToast(t('employeeUpdated'));
+      } else {
+        const added = await DB.addEmployee({ name, role, phone });
+        STATE.employees.push(added);
+        showToast(t('employeeAdded'));
+      }
+      closeModal(); navigate('employees');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
 }
 
 function confirmRemoveEmployee(id) {
   const emp = getEmployee(id);
   if (!emp) return;
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('removeEmployee')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div><p style="color:var(--text2);margin-bottom:20px;">${t('removeEmployeeConfirm')}</p><div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-danger" onclick="doRemoveEmployee('${id}')">${t('remove')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('removeEmployee')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div><p style="color:var(--text2);margin-bottom:20px;">${t('removeEmployeeConfirm')}</p><div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-danger-confirm" onclick="doRemoveEmployee('${id}')">${t('remove')}</button></div>`);
 }
 
 async function doRemoveEmployee(id) {
@@ -888,13 +937,16 @@ function renderAdmin() {
 }
 
 function renderAdminGate() {
+  const lockedUntil = STATE.adminLockUntil || 0;
+  const isLocked = lockedUntil > Date.now();
+  const secsLeft = isLocked ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
   return `
     <div class="page-header">
       <div><h1 class="page-title">${t('adminTitle')}</h1><p class="page-subtitle">${t('adminDesc')}</p></div>
     </div>
     <div class="admin-gate">
       <div class="lock-icon">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
@@ -904,29 +956,92 @@ function renderAdminGate() {
         <div style="font-size:13px;color:var(--text2);">${t('adminPinHint')}</div>
       </div>
       <div style="width:100%;max-width:300px;">
-        <div class="form-group">
-          <label>${t('adminPin')}</label>
-          <input type="password" id="admin-pin-input" placeholder="${t('adminPinPlaceholder')}" maxlength="8"
-            onkeydown="if(event.key==='Enter') submitAdminPin()" />
-        </div>
-        <div id="admin-pin-error" class="alert alert-danger hidden" style="margin-bottom:12px;">${t('wrongPin')}</div>
-        <button class="btn btn-primary" style="width:100%;" onclick="submitAdminPin()">${t('unlock')}</button>
+        ${isLocked ? `
+          <div class="alert alert-danger" id="admin-lock-msg">Too many attempts. Try again in <span id="lock-countdown">${secsLeft}</span>s.</div>
+        ` : `
+          <div class="form-group">
+            <label>${t('adminPin')}</label>
+            <input type="password" id="admin-pin-input" placeholder="${t('adminPinPlaceholder')}" maxlength="8" aria-label="${t('adminPin')}"
+              onkeydown="if(event.key==='Enter') submitAdminPin()" autofocus />
+          </div>
+          <div id="admin-pin-error" class="alert alert-danger hidden" style="margin-bottom:12px;">${t('wrongPin')}</div>
+          <button class="btn btn-primary" style="width:100%;" onclick="submitAdminPin()">${t('unlock')}</button>
+        `}
       </div>
     </div>
   `;
 }
 
+function startLockCountdown() {
+  const el = $('lock-countdown');
+  if (!el) return;
+  const timer = setInterval(() => {
+    const remaining = Math.ceil((STATE.adminLockUntil - Date.now()) / 1000);
+    if (remaining <= 0) {
+      clearInterval(timer);
+      STATE.adminFailCount = 0;
+      refreshPage();
+    } else {
+      const liveEl = $('lock-countdown');
+      if (liveEl) liveEl.textContent = remaining; else clearInterval(timer);
+    }
+  }, 1000);
+}
+
 function submitAdminPin() {
+  if (STATE.adminLockUntil && STATE.adminLockUntil > Date.now()) return;
   const pin = $('admin-pin-input')?.value;
   const storedPin = localStorage.getItem('acm_admin_pin') || '1234';
   if (pin === storedPin) {
+    STATE.adminFailCount = 0;
     STATE.adminUnlocked = true;
     showToast(t('adminUnlocked'));
-    refreshPage();
+    // Force a PIN change if still on the factory default
+    if (storedPin === '1234') {
+      refreshPage();
+      setTimeout(openForcedPinChange, 150);
+    } else {
+      refreshPage();
+    }
   } else {
-    const err = $('admin-pin-error');
-    if (err) err.classList.remove('hidden');
+    STATE.adminFailCount = (STATE.adminFailCount || 0) + 1;
+    if (STATE.adminFailCount >= 3) {
+      STATE.adminLockUntil = Date.now() + 30000;
+      STATE.adminFailCount = 0;
+      refreshPage();
+      setTimeout(startLockCountdown, 50);
+    } else {
+      const err = $('admin-pin-error');
+      if (err) err.classList.remove('hidden');
+    }
   }
+}
+
+function openForcedPinChange() {
+  openModal(`
+    <div class="modal-header"><h2 class="modal-title">⚠ Set a New Admin PIN</h2></div>
+    <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">You're still using the default PIN (<strong>1234</strong>). For security, set a new PIN now before continuing.</p>
+    <div class="form-group"><label>${t('newPin')}</label><input type="password" id="forced-pin" placeholder="e.g. 5678" maxlength="8" minlength="4" autofocus /></div>
+    <div id="forced-pin-error" class="alert alert-danger hidden" style="margin-bottom:0;">PIN must be at least 4 characters and not be 1234.</div>
+    <div class="form-actions">
+      <button class="btn btn-primary" style="width:100%;" onclick="submitForcedPinChange()">Save New PIN</button>
+    </div>
+  `);
+  // Prevent closing via overlay click or Escape — this is mandatory
+  const overlay = $('modal-overlay');
+  if (overlay) overlay.onclick = null;
+}
+
+function submitForcedPinChange() {
+  const pin = $('forced-pin')?.value.trim();
+  const err = $('forced-pin-error');
+  if (!pin || pin.length < 4 || pin === '1234') {
+    if (err) err.classList.remove('hidden');
+    return;
+  }
+  localStorage.setItem('acm_admin_pin', pin);
+  closeModal();
+  showToast(t('pinSaved'));
 }
 
 function renderAdminPanel() {
@@ -1069,16 +1184,16 @@ function costFormHTML(c = {}) {
 }
 
 function openAddCost() {
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('addCost')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>${costFormHTML()}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitCost()">+ ${t('addCost')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('addCost')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>${costFormHTML()}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitCost(null, this)">+ ${t('addCost')}</button></div>`);
 }
 
 function openEditCost(id) {
   const c = STATE.costs.find(x => x.id === id);
   if (!c) return;
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('editCost')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>${costFormHTML(c)}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitCost('${id}')">${t('saveChanges')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('editCost')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div>${costFormHTML(c)}<div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-primary" onclick="submitCost('${id}', this)">${t('saveChanges')}</button></div>`);
 }
 
-async function submitCost(id) {
+async function submitCost(id, btn) {
   const productSel   = $('cf-product');
   const product_id   = productSel?.value || null;
   const product_name = product_id ? (productSel.options[productSel.selectedIndex].dataset.name || '') : '';
@@ -1090,22 +1205,24 @@ async function submitCost(id) {
   const notes          = $('cf-notes')?.value.trim();
 
   if (!purchased_from || isNaN(purchase_price) || !purchase_date) { showToast(t('fillAllFields'), 'error'); return; }
-  try {
-    if (id) {
-      const updated = await DB.updateCost(id, { product_id, product_name, purchased_from, purchase_price, qty, payment_method, purchase_date, notes });
-      STATE.costs = STATE.costs.map(c => c.id === id ? updated : c);
-      showToast(t('costUpdated'));
-    } else {
-      const added = await DB.addCost({ product_id, product_name, purchased_from, purchase_price, qty, payment_method, purchase_date, notes });
-      STATE.costs.unshift(added);
-      showToast(t('costAdded'));
-    }
-    closeModal(); navigate('admin');
-  } catch(e) { showToast(e.message, 'error'); }
+  await withLoading(btn, t('loading'), async () => {
+    try {
+      if (id) {
+        const updated = await DB.updateCost(id, { product_id, product_name, purchased_from, purchase_price, qty, payment_method, purchase_date, notes });
+        STATE.costs = STATE.costs.map(c => c.id === id ? updated : c);
+        showToast(t('costUpdated'));
+      } else {
+        const added = await DB.addCost({ product_id, product_name, purchased_from, purchase_price, qty, payment_method, purchase_date, notes });
+        STATE.costs.unshift(added);
+        showToast(t('costAdded'));
+      }
+      closeModal(); navigate('admin');
+    } catch(e) { showToast(e.message, 'error'); }
+  });
 }
 
 function confirmRemoveCost(id) {
-  openModal(`<div class="modal-header"><h2 class="modal-title">${t('removeCost')}</h2><button class="modal-close" onclick="closeModal()">✕</button></div><p style="color:var(--text2);margin-bottom:20px;">${t('removeCostConfirm')}</p><div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-danger" onclick="doRemoveCost('${id}')">${t('remove')}</button></div>`);
+  openModal(`<div class="modal-header"><h2 class="modal-title">${t('removeCost')}</h2><button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button></div><p style="color:var(--text2);margin-bottom:20px;">${t('removeCostConfirm')}</p><div class="form-actions"><button class="btn" onclick="closeModal()">${t('cancel')}</button><button class="btn btn-danger-confirm" onclick="doRemoveCost('${id}')">${t('remove')}</button></div>`);
 }
 
 async function doRemoveCost(id) {
@@ -1154,12 +1271,6 @@ function renderSettings() {
         <button class="btn btn-primary" onclick="saveConfig()">${t('saveConfig')}</button>
       </div>
 
-      <div class="card">
-        <div class="card-title" style="margin-bottom:8px;">Database SQL Setup</div>
-        <p style="font-size:12px; color:var(--text3); margin-bottom:10px;">Run this in Supabase → SQL Editor:</p>
-        <pre style="background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:12px; overflow-x:auto; white-space:pre-wrap; font-size:11px; line-height:1.5;">${window.SUPABASE_SQL}</pre>
-        <button class="btn btn-sm" style="margin-top:8px;" onclick="copySql()">Copy SQL</button>
-      </div>
     </div>
   `;
 }
@@ -1185,7 +1296,7 @@ async function saveConfig() {
 }
 
 // ===== ICONS =====
-const ico = (d, extra='') => `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ${extra}>${d}</svg>`;
+const ico = (d, extra='') => `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false" ${extra}>${d}</svg>`;
 function dashIcon()    { return ico('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'); }
 function boxIcon()     { return ico('<path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3"/><rect x="1" y="8" width="22" height="13" rx="2"/>'); }
 function cartIcon()    { return ico('<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>'); }
