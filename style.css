@@ -16,16 +16,22 @@
   --accent-dim: rgba(124,109,240,0.15);
   --accent-dark:#6254d4;
   --grad:      linear-gradient(135deg, #7c6df0 0%, #a78bfa 100%);
-  --grad2:     linear-gradient(135deg, #6254d4 0%, #8b5cf6 100%);
+  --grad2:     linear-gradient(135deg, #6254d4 0%, #a78bfa 100%);
   --green:     #34d399;
   --red:       #f87171;
+  --red-hover: #f55c5c;
+  --red-ink:   #1a0808;
   --blue:      #60a5fa;
   --amber:     #fbbf24;
   --purple:    #a78bfa;
   --pink:      #f472b6;
+  --overlay:   rgba(10,10,30,0.8);
   --font-body: 'Inter', sans-serif;
+  --font-numeric: 'JetBrains Mono', 'Courier New', monospace;
+  --font-mono: 'Courier New', monospace;
   --font-ethiopic: 'Noto Sans Ethiopic', sans-serif;
   --radius:    10px;
+  --radius-xs: 6px;
   --radius-lg: 16px;
   --radius-xl: 20px;
   --sidebar-w: 240px;
@@ -107,7 +113,7 @@ body {
   width: 42px;
   height: 42px;
   background: var(--grad);
-  border-radius: 12px;
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -240,6 +246,11 @@ body {
 .nav-link:hover {
   background: rgba(124,109,240,0.1);
   color: var(--text);
+}
+
+.nav-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124,109,240,0.45);
 }
 
 .nav-link.active {
@@ -420,6 +431,10 @@ body {
 [data-lang="am"] .btn { font-family: var(--font-ethiopic), var(--font-body); }
 
 .btn:hover { background: var(--bg4); border-color: var(--border2); }
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124,109,240,0.45);
+}
 .btn:active { transform: scale(0.97); }
 
 .btn-primary {
@@ -443,6 +458,33 @@ body {
 
 .btn-danger:hover { background: rgba(248,113,113,0.1); border-color: var(--red); }
 
+/* Heavier, solid-filled variant reserved for the final confirm step on
+   irreversible actions (permanent delete). Quiet .btn-danger stays the
+   default everywhere else per DESIGN.md restraint rules; this is the
+   deliberate exception that signals "this cannot be undone." */
+.btn-danger-confirm {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--red-ink);
+  font-weight: 700;
+}
+
+.btn-danger-confirm:hover { background: var(--red-hover); border-color: var(--red-hover); }
+
+.irreversible-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(248,113,113,0.08);
+  border: 1px solid rgba(248,113,113,0.3);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-size: 12px;
+  color: var(--red);
+  font-weight: 600;
+}
+
 .btn-purple {
   background: rgba(167,139,250,0.15);
   border-color: rgba(167,139,250,0.3);
@@ -460,6 +502,17 @@ body {
 .btn-green:hover { background: rgba(52,211,153,0.22); }
 
 .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+/* Ensure btn-sm meets the 44×44px touch target minimum on mobile (WCAG 2.5.5).
+   Desktop can stay compact; on touch screens tapping table action buttons
+   without a big enough target is the main source of mis-taps in Admin/Sales. */
+@media (max-width: 768px) {
+  .btn-sm {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+}
 
 /* ===== STAT CARDS ===== */
 .stats-grid {
@@ -503,6 +556,7 @@ body {
 }
 
 .stat-value {
+  font-family: var(--font-numeric);
   font-size: 26px;
   font-weight: 800;
   color: var(--text);
@@ -583,7 +637,7 @@ body {
 .chart-bar {
   width: 100%;
   background: var(--grad);
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
   min-height: 4px;
   opacity: 0.8;
   transition: opacity var(--transition);
@@ -645,7 +699,7 @@ tbody tr:hover td { background: rgba(124,109,240,0.04); }
 .badge {
   display: inline-block;
   padding: 3px 9px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.2px;
@@ -747,7 +801,7 @@ select option { background: var(--bg3); }
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(10,10,30,0.8);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -800,7 +854,7 @@ select option { background: var(--bg3); }
   font-size: 16px;
   line-height: 1;
   transition: all var(--transition);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .modal-close:hover { color: var(--text); background: var(--bg4); }
@@ -929,6 +983,7 @@ select option { background: var(--bg3); }
 }
 
 .emp-stat-val {
+  font-family: var(--font-numeric);
   font-size: 17px;
   font-weight: 800;
   color: var(--accent2);
@@ -1038,7 +1093,7 @@ select option { background: var(--bg3); }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; } /* intentional: half of 5px track width, not part of the UI radius scale */
 ::-webkit-scrollbar-thumb:hover { background: var(--border2); }
 
 /* ===== RESPONSIVE ===== */
@@ -1063,6 +1118,9 @@ select option { background: var(--bg3); }
   .sync-badge { top: auto; bottom: calc(var(--bottom-nav-h) + 60px); right: 12px; }
   .modal-box { padding: 22px; }
   .auth-card { padding: 28px 22px; }
+  /* WCAG 2.5.5 — all interactive targets must be ≥44px tall on touch screens */
+  .btn { min-height: 44px; }
+  input, select, textarea { min-height: 44px; }
 }
 
 @media (max-width: 480px) {
@@ -1098,4 +1156,45 @@ pre {
   border: none;
   border-top: 1px solid var(--border);
   margin: 20px 0;
+}
+
+/* ===== REDUCED MOTION =====
+   Respect the OS-level "reduce motion" preference. All animations are kept
+   for users who haven't requested this; users who have get instant transitions.
+   Required by PRODUCT.md accessibility clause and WCAG 2.3.3. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .modal-box { animation: none; }
+  .page-enter { animation: none; }
+  .toast { animation: none; }
+  .spinner { animation: spin 1.5s linear infinite; } /* keep spinner but slow it — removing it entirely removes feedback */
+}
+
+/* ===== SKIP NAVIGATION LINK =====
+   Visually hidden until keyboard users Tab into it, then appears as a
+   high-contrast bar at the top of the viewport. Standard WCAG 2.4.1 bypass. */
+.skip-link {
+  position: fixed;
+  top: -100%;
+  left: 0;
+  z-index: 9999;
+  padding: 12px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  border-radius: 0 0 var(--radius) 0;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid #fff;
+  outline-offset: 2px;
 }
