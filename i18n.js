@@ -205,8 +205,11 @@ window.t = function(key) {
 window.setLang = function(lang) {
   currentLang = lang;
   localStorage.setItem('bs_lang', lang);
+  // data-lang drives CSS font switching; lang drives screen reader language
   document.documentElement.setAttribute('data-lang', lang);
+  document.documentElement.setAttribute('lang', lang === 'am' ? 'am' : 'en');
   if (window.APP && window.APP.rerender) window.APP.rerender();
 };
 
 document.documentElement.setAttribute('data-lang', window.currentLang);
+document.documentElement.setAttribute('lang', window.currentLang === 'am' ? 'am' : 'en');
